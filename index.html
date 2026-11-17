@@ -85,7 +85,15 @@ button { font: inherit; }
 .chip.prog { font-variant-numeric: tabular-nums; }
 .iconbtn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: .85rem; }
 .iconbtn:hover { border-color: var(--accent); }
-.menu-btn { display: none; }
+.menu-btn { display: inline-flex; align-items: center; gap: 6px; }
+.menu-btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.side-close { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 4px; padding: 6px 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 8px; cursor: pointer; font-size: .85rem; }
+.side-close:hover { border-color: var(--accent); color: var(--accent); }
+@media (min-width: 901px) {
+  body.side-hidden .shell { grid-template-columns: minmax(0, 1fr); }
+  body.side-hidden nav.side { display: none; }
+  body.side-hidden .page { margin-inline: auto; }
+}
 
 /* layout principal */
 .shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; max-width: 1240px; margin: 0 auto;
@@ -270,7 +278,6 @@ code { font-family: var(--f-mono); font-size: .88em; background: var(--surface-2
   .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
   nav.side { position: fixed; z-index: 45; top: 0; left: 0; bottom: 0; width: min(300px, 85vw); max-height: none; background: var(--surface); border-right: 1px solid var(--line); padding: calc(16px + env(safe-area-inset-top, 0px)) 10px 16px max(10px, env(safe-area-inset-left, 0px)); transform: translateX(-105%); transition: transform .2s ease; box-shadow: var(--shadow); }
   nav.side.open { transform: none; }
-  .menu-btn { display: inline-block; }
   .brand span { display: none; }
 }
 @media (max-width: 520px) {
@@ -285,7 +292,7 @@ code { font-family: var(--f-mono); font-size: .88em; background: var(--surface-2
 <body>
 <header class="top">
   <div class="top-in">
-    <button class="iconbtn menu-btn" id="menuBtn" aria-label="Abrir índice">☰ Temas</button>
+    <button class="iconbtn menu-btn" id="menuBtn" aria-controls="side" aria-expanded="true" title="Mostrar u ocultar la barra de temas">☰ <span>Temas</span></button>
     <div class="brand"><b>Repaso Programación I</b><span>Python · teoría y práctica para el parcial</span></div>
     <span class="chip prog" id="progChip">0 resueltos</span>
     <span class="chip" id="pyChip"><i></i><span>Preparando Python…</span></span>
@@ -504,7 +511,7 @@ function updateProgress() {
 /* ---------- navegación ---------- */
 function renderNav() {
   const side = $("#side");
-  let h = `<h4>Empezar</h4><a href="#inicio" data-r="inicio"><span class="n">··</span><span>Cómo usar esta página</span><span></span></a><h4>Temas</h4>`;
+  let h = `<button class="side-close" id="sideClose" type="button">« Ocultar barra</button><h4>Empezar</h4><a href="#inicio" data-r="inicio"><span class="n">··</span><span>Cómo usar esta página</span><span></span></a><h4>Temas</h4>`;
   for (const t of DATA.topics) h += `<a href="#${t.id}" data-r="${t.id}" data-t="${t.id}"><span class="n">${String(t.num).padStart(2, "0")}</span><span>${esc(t.title)}</span><span class="c"></span></a>`;
   h += `<h4>Evaluación</h4><a href="#simulacro" data-r="simulacro"><span class="n">✎</span><span>Simulacro de parcial</span><span></span></a>`;
   h += `<h4>Opciones</h4><a href="#" id="resetProg"><span class="n">↺</span><span>Borrar mi progreso</span><span></span></a>`;
@@ -515,7 +522,7 @@ function renderNav() {
     if (a.dataset.confirm) { progress = {}; store.set("progress", {}); Object.keys(localStorage).filter(k => k.startsWith("p1rep:code:")).forEach(k => { try { localStorage.removeItem(k); } catch { } }); updateProgress(); route(); a.dataset.confirm = ""; a.children[1].textContent = "Borrar mi progreso"; }
     else { a.dataset.confirm = "1"; a.children[1].textContent = "Tocá otra vez para confirmar"; setTimeout(() => { a.dataset.confirm = ""; a.children[1].textContent = "Borrar mi progreso"; }, 4000); }
   });
-  side.addEventListener("click", e => { if (e.target.closest("a[data-r]")) side.classList.remove("open"); });
+  side.addEventListener("click", e => { if (e.target.closest("a[data-r]")) { side.classList.remove("open"); syncSide(); } });
 }
 function route() {
   const id = (location.hash || "#inicio").slice(1);
@@ -850,7 +857,27 @@ function wireTheme() {
 
 renderNav(); wireConsole(); wireTheme(); updateProgress(); route();
 window.addEventListener("hashchange", route);
-$("#menuBtn").addEventListener("click", () => $("#side").classList.toggle("open"));
+const narrow = () => matchMedia("(max-width: 900px)").matches;
+function syncSide() {
+  const shown = narrow() ? $("#side").classList.contains("open") : !document.body.classList.contains("side-hidden");
+  $("#menuBtn").setAttribute("aria-expanded", String(shown));
+  $("#sideClose").textContent = narrow() ? "✕ Cerrar" : "« Ocultar barra";
+}
+function toggleSide(force) {
+  if (narrow()) $("#side").classList.toggle("open", force);
+  else {
+    const hide = force === undefined ? !document.body.classList.contains("side-hidden") : !force;
+    document.body.classList.toggle("side-hidden", hide);
+    store.set("sideHidden", hide);
+  }
+  syncSide();
+}
+if (store.get("sideHidden", false)) document.body.classList.add("side-hidden");
+$("#menuBtn").addEventListener("click", () => toggleSide());
+$("#sideClose").addEventListener("click", () => toggleSide(false));
+document.addEventListener("click", e => { if (narrow() && $("#side").classList.contains("open") && !e.target.closest("#side, #menuBtn")) toggleSide(false); });
+matchMedia("(max-width: 900px)").addEventListener("change", syncSide);
+syncSide();
 ensurePy().catch(() => { });
 </script>
 
